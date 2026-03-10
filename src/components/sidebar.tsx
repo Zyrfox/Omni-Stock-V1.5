@@ -11,21 +11,38 @@ import {
   Brain,
   Settings,
   LogOut,
+  Users,
+  ShoppingCart,
 } from "lucide-react";
+import { signOut } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
-const navItems = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  adminOnly?: boolean;
+};
+
+const navItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/upload", label: "Upload Pawoon", icon: Upload },
-  { href: "/dashboard/materials", label: "Bahan Baku", icon: Package },
-  { href: "/dashboard/recipes", label: "Resep / Formula", icon: ChefHat },
-  { href: "/dashboard/vendors", label: "Vendor & PO", icon: Truck },
+  { href: "/dashboard/materials", label: "Bahan Baku", icon: Package, adminOnly: true },
+  { href: "/dashboard/recipes", label: "Resep / Formula", icon: ChefHat, adminOnly: true },
+  { href: "/dashboard/vendors", label: "Vendor", icon: Truck, adminOnly: true },
+  { href: "/dashboard/purchase-orders", label: "Purchase Order", icon: ShoppingCart },
   { href: "/dashboard/ai-consultant", label: "AI Consultant", icon: Brain },
+  { href: "/dashboard/users", label: "Manajemen User", icon: Users, adminOnly: true },
   { href: "/dashboard/settings", label: "Pengaturan", icon: Settings },
 ];
 
-export function Sidebar() {
+export function Sidebar({ userRole }: { userRole: "admin" | "manager" }) {
   const pathname = usePathname();
+  const visibleItems = navItems.filter((item) => !item.adminOnly || userRole === "admin");
+
+  const handleSignOut = async () => {
+    await signOut({ fetchOptions: { onSuccess: () => { window.location.href = "/login"; } } });
+  };
 
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-full w-64 flex-col border-r bg-slate-900 text-white">
@@ -40,7 +57,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1 p-3">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive =
             pathname === item.href ||
             (item.href !== "/dashboard" && pathname.startsWith(item.href));
@@ -63,15 +80,13 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-slate-700 p-3">
-        <form action="/api/auth/signout" method="POST">
-          <button
-            type="submit"
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
-          >
-            <LogOut className="h-4 w-4" />
-            Keluar
-          </button>
-        </form>
+        <button
+          onClick={handleSignOut}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+        >
+          <LogOut className="h-4 w-4" />
+          Keluar
+        </button>
       </div>
     </aside>
   );

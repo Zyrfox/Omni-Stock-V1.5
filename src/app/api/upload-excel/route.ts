@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { masterBahan } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { masterBahan, masterMenu, mappingResep, salesTransactions } from "@/lib/db/schema";
+import { eq, sql } from "drizzle-orm";
 import * as XLSX from "xlsx";
-import { getStockStatus, estimateDaysUntilStockout } from "@/lib/utils";
+import { getStockStatus, estimateDaysUntilStockout, generateCustomId } from "@/lib/utils";
 import type { StockStatus } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth";
 
 interface ParsedItem {
   id: string;
@@ -16,15 +17,21 @@ interface ParsedItem {
   status: StockStatus;
   statusEmoji: string;
   daysUntilStockout: number | null;
-  vendor: string;
   actionPO: string;
   satuanDapur: string;
+  tipeBahan: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const appUser = await getSessionUser(request.headers);
+    if (!appUser) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
+    const outletId = (formData.get("outlet_id") as string) || "OUT-001";
 
     if (!file) {
       return NextResponse.json({ error: "File tidak ditemukan" }, { status: 400 });
@@ -40,54 +47,106 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "File Excel kosong" }, { status: 400 });
     }
 
+    // Generate batch ID
+    const uploadBatchId = `BATCH-${Date.now()}`;
+    const allBahan = await db.select().from(masterBahan);
+    const allMenu = await db.select().from(masterMenu);
+    const allResep = await db.select().from(mappingResep);
+
+    // Count existing transactions for ID generation
+    const [{ count: trxCount }] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(salesTransactions);
+    let trxSeq = Number(trxCount) + 1;
+
     const results: ParsedItem[] = [];
+    const consumptionMap = new Map<string, number>();
 
     for (const row of rows) {
-      const namaBahan = String(row["nama_bahan"] || row["Nama Bahan"] || row["product_name"] || "");
-      const stokAkhir = parseFloat(String(row["stok_akhir"] || row["Stok Akhir"] || row["stock"] || 0));
+      const menuName = String(row["nama_menu"] || row["Nama Menu"] || row["product_name"] || "");
+      const qtyTerjual = parseInt(String(row["qty"] || row["Qty"] || row["quantity"] || 0));
+      const tanggal = String(row["tanggal"] || row["Tanggal"] || row["date"] || new Date().toISOString().split("T")[0]);
 
-      if (!namaBahan) continue;
+      if (!menuName || qtyTerjual <= 0) continue;
 
-      // Try to find matching bahan in database
-      const allBahan = await db.select().from(masterBahan);
-      const match = allBahan.find(
-        (b) => b.namaBahan.toLowerCase() === namaBahan.toLowerCase()
-      );
+      // Match menu
+      const menu = allMenu.find((m) => m.namaMenu.toLowerCase() === menuName.toLowerCase());
+      if (!menu) continue;
 
-      const stokMinimum = match?.stokMinimum ?? 5;
-      const leadTimeDays = match?.leadTimeDays ?? 1;
-      const avgDailyConsumption = match?.avgDailyConsumption ?? 0;
-      const satuanDapur = match?.satuanDapur ?? "pcs";
+      // Insert sales_transaction
+      await db.insert(salesTransactions).values({
+        id: generateCustomId("TRX", trxSeq++),
+        outletId,
+        uploadBatchId,
+        tanggalTransaksi: tanggal,
+        menuId: menu.id,
+        qtyTerjual,
+      });
 
-      const status = getStockStatus(stokAkhir, stokMinimum, leadTimeDays, avgDailyConsumption);
-      const daysUntilStockout = estimateDaysUntilStockout(stokAkhir, avgDailyConsumption);
-
-      // Update stok_saat_ini in database if match found
-      if (match) {
-        await db
-          .update(masterBahan)
-          .set({ stokSaatIni: stokAkhir })
-          .where(eq(masterBahan.id, match.id));
+      // Calculate bahan consumption via mapping_resep
+      const recipes = allResep.filter((r) => r.parentId === menu.id && r.parentType === "menu");
+      for (const recipe of recipes) {
+        if (recipe.itemType === "bahan_dasar") {
+          const curr = consumptionMap.get(recipe.itemId) || 0;
+          consumptionMap.set(recipe.itemId, curr + recipe.qty * qtyTerjual);
+        } else if (recipe.itemType === "semi_finished") {
+          // Resolve 2nd level: semi_finished → bahan_dasar
+          const subRecipes = allResep.filter((r) => r.parentId === recipe.itemId && r.parentType === "semi_finished");
+          for (const sub of subRecipes) {
+            if (sub.itemType === "bahan_dasar") {
+              const curr = consumptionMap.get(sub.itemId) || 0;
+              consumptionMap.set(sub.itemId, curr + sub.qty * recipe.qty * qtyTerjual);
+            }
+          }
+        }
       }
+    }
 
+    // Deduct stock and update avg_daily_consumption (auto mode)
+    for (const [bahanId, totalUsed] of consumptionMap.entries()) {
+      const bahan = allBahan.find((b) => b.id === bahanId);
+      if (!bahan) continue;
+
+      const newStok = Math.max(0, bahan.stokSaatIni - totalUsed);
+      // Simple moving average: blend old avg with new data point
+      const newAvg = bahan.avgConsumptionSource === "manual"
+        ? bahan.avgDailyConsumption
+        : (bahan.avgDailyConsumption + totalUsed) / 2;
+
+      await db
+        .update(masterBahan)
+        .set({
+          stokSaatIni: newStok,
+          avgDailyConsumption: newAvg,
+          avgConsumptionSource: "auto",
+        })
+        .where(eq(masterBahan.id, bahanId));
+    }
+
+    // Build results for response
+    const updatedBahan = await db.select().from(masterBahan);
+    for (const bahan of updatedBahan) {
+      const status = getStockStatus(bahan.stokSaatIni, bahan.stokMinimum, bahan.leadTimeDays, bahan.avgDailyConsumption);
+      const daysUntilStockout = estimateDaysUntilStockout(bahan.stokSaatIni, bahan.avgDailyConsumption);
       results.push({
-        id: match?.id || "-",
-        namaBahan,
-        stokAkhir,
-        stokMinimum,
-        leadTimeDays,
-        avgDailyConsumption,
+        id: bahan.id,
+        namaBahan: bahan.namaBahan,
+        stokAkhir: bahan.stokSaatIni,
+        stokMinimum: bahan.stokMinimum,
+        leadTimeDays: bahan.leadTimeDays,
+        avgDailyConsumption: bahan.avgDailyConsumption,
         status,
         statusEmoji: status === "SAFE" ? "🟢" : status === "WARNING" ? "🟠" : "🔴",
         daysUntilStockout,
-        vendor: "-",
         actionPO: status === "SAFE" ? "Safe" : "Order Sekarang",
-        satuanDapur,
+        satuanDapur: bahan.satuanDapur,
+        tipeBahan: bahan.tipeBahan,
       });
     }
 
     return NextResponse.json({
-      message: `Berhasil memproses ${results.length} item dari Excel.`,
+      message: `Berhasil: ${trxSeq - Number(trxCount) - 1} transaksi diproses, ${consumptionMap.size} bahan baku terupdate.`,
+      batchId: uploadBatchId,
       data: results,
     });
   } catch (error: unknown) {

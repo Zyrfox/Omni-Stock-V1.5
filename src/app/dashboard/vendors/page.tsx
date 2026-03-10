@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { masterVendor } from "@/lib/db/schema";
+import { masterVendor, vendorBahan, masterBahan } from "@/lib/db/schema";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Table,
@@ -9,25 +9,41 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { Truck } from "lucide-react";
 
-async function getVendors() {
+async function getVendorsWithBahan() {
   try {
-    return await db.select().from(masterVendor);
+    const vendors = await db.select().from(masterVendor);
+    const vb = await db.select().from(vendorBahan);
+    const bahan = await db.select().from(masterBahan);
+    const bahanMap = new Map(bahan.map((b) => [b.id, b.namaBahan]));
+
+    return vendors.map((v) => {
+      const items = vb
+        .filter((r) => r.vendorId === v.id)
+        .map((r) => ({
+          bahanId: r.bahanId,
+          bahanName: bahanMap.get(r.bahanId) || r.bahanId,
+          harga: r.hargaPerSatuan,
+          isPrimary: r.isPrimary,
+        }));
+      return { ...v, items };
+    });
   } catch {
     return [];
   }
 }
 
 export default async function VendorsPage() {
-  const vendors = await getVendors();
+  const vendors = await getVendorsWithBahan();
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Vendor & Purchase Order</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Master Vendor</h1>
         <p className="text-muted-foreground">
-          Kelola pemasok dan pengadaan bahan baku
+          Kelola pemasok bahan baku dan relasi supply
         </p>
       </div>
 
@@ -38,14 +54,14 @@ export default async function VendorsPage() {
             Daftar Vendor ({vendors.length})
           </CardTitle>
           <CardDescription>
-            Pemasok rekanan yang terdaftar dalam sistem
+            Pemasok rekanan dan bahan yang disupply
           </CardDescription>
         </CardHeader>
         <CardContent>
           {vendors.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">
               <p>Belum ada vendor yang terdaftar.</p>
-              <p className="text-sm">Data vendor dapat ditambahkan melalui migrasi atau input manual.</p>
+              <p className="text-sm">Data vendor dapat ditambahkan melalui input manual.</p>
             </div>
           ) : (
             <Table>
@@ -53,9 +69,10 @@ export default async function VendorsPage() {
                 <TableRow>
                   <TableHead>ID</TableHead>
                   <TableHead>Nama Vendor</TableHead>
-                  <TableHead>Bahan Baku</TableHead>
+                  <TableHead>Kontak</TableHead>
                   <TableHead>No. Rekening</TableHead>
-                  <TableHead>Est. Pengiriman</TableHead>
+                  <TableHead className="text-right">Lead Time</TableHead>
+                  <TableHead>Bahan yang Disupply</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -63,29 +80,27 @@ export default async function VendorsPage() {
                   <TableRow key={v.id}>
                     <TableCell className="font-mono text-xs">{v.id}</TableCell>
                     <TableCell className="font-medium">{v.namaVendor}</TableCell>
-                    <TableCell className="max-w-xs truncate text-sm">{v.bahanBakuList || "-"}</TableCell>
+                    <TableCell>{v.kontak || "-"}</TableCell>
                     <TableCell>{v.noRekening || "-"}</TableCell>
-                    <TableCell>{v.estimasiPengiriman || "-"}</TableCell>
+                    <TableCell className="text-right">{v.estimasiPengiriman} hari</TableCell>
+                    <TableCell>
+                      {v.items.length === 0 ? (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {v.items.map((item) => (
+                            <Badge key={item.bahanId} variant={item.isPrimary ? "default" : "outline"} className="text-xs">
+                              {item.bahanName}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Purchase Order</CardTitle>
-          <CardDescription>
-            Buat PO berdasarkan rekomendasi AI atau status stok Warning/Critical
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="py-4 text-center text-sm text-muted-foreground">
-            Fitur Purchase Order akan menggunakan data dari AI Consultant Dashboard.
-            Kunjungi halaman AI Consultant untuk mendapatkan rekomendasi pemesanan.
-          </p>
         </CardContent>
       </Card>
     </div>

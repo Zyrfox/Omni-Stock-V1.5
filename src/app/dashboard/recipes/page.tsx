@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { masterMenu, mappingResep, masterBahan } from "@/lib/db/schema";
+import { masterMenu, mappingResep, masterBahan, semiFinished } from "@/lib/db/schema";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Table,
@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { ChefHat } from "lucide-react";
 
 async function getMenusWithRecipes() {
@@ -16,16 +17,32 @@ async function getMenusWithRecipes() {
     const menus = await db.select().from(masterMenu);
     const recipes = await db.select().from(mappingResep);
     const bahan = await db.select().from(masterBahan);
+    const sfg = await db.select().from(semiFinished);
 
-    const bahanMap = new Map(bahan.map((b) => [b.id, b.namaBahan]));
+    const nameMap = new Map<string, string>();
+    bahan.forEach((b) => nameMap.set(b.id, b.namaBahan));
+    sfg.forEach((s) => nameMap.set(s.id, s.namaSemiFinished));
 
     return menus.map((menu) => {
       const menuRecipes = recipes
-        .filter((r) => r.parentId === menu.id)
-        .map((r) => ({
-          ...r,
-          itemName: bahanMap.get(r.itemId) || r.itemId,
-        }));
+        .filter((r) => r.parentId === menu.id && r.parentType === "menu")
+        .map((r) => {
+          // If item is semi_finished, resolve sub-components
+          const subItems = r.itemType === "semi_finished"
+            ? recipes
+                .filter((sr) => sr.parentId === r.itemId && sr.parentType === "semi_finished")
+                .map((sr) => ({
+                  id: sr.id,
+                  itemName: nameMap.get(sr.itemId) || sr.itemId,
+                  qty: sr.qty,
+                }))
+            : [];
+          return {
+            ...r,
+            itemName: nameMap.get(r.itemId) || r.itemId,
+            subItems,
+          };
+        });
       return { ...menu, recipes: menuRecipes };
     });
   } catch {
@@ -41,7 +58,7 @@ export default async function RecipesPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Resep & Formula</h1>
         <p className="text-muted-foreground">
-          Mapping antara menu jual dan komponen bahan bakunya
+          Mapping 2-Level BOM: menu jual → semi-finished → bahan dasar
         </p>
       </div>
 
@@ -52,7 +69,7 @@ export default async function RecipesPage() {
             Master Menu ({menus.length})
           </CardTitle>
           <CardDescription>
-            Daftar menu jual beserta komposisi resep
+            Daftar menu jual beserta komposisi resep (2-level hierarchy)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -92,8 +109,20 @@ export default async function RecipesPage() {
                         <ul className="space-y-1">
                           {menu.recipes.map((r) => (
                             <li key={r.id} className="text-xs">
+                              <Badge variant={r.itemType === "semi_finished" ? "secondary" : "outline"} className="mr-1 text-[10px]">
+                                {r.itemType === "semi_finished" ? "SFG" : "BHN"}
+                              </Badge>
                               <span className="font-medium">{r.itemName}</span>
                               <span className="text-muted-foreground"> x{r.qty}</span>
+                              {r.subItems.length > 0 && (
+                                <ul className="ml-6 mt-0.5 space-y-0.5">
+                                  {r.subItems.map((sub) => (
+                                    <li key={sub.id} className="text-[11px] text-muted-foreground">
+                                      ↳ {sub.itemName} x{sub.qty}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
                             </li>
                           ))}
                         </ul>

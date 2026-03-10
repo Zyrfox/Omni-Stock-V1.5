@@ -67,6 +67,7 @@ export default async function MaterialsPage() {
                 <TableRow>
                   <TableHead>ID</TableHead>
                   <TableHead>Nama Bahan</TableHead>
+                  <TableHead>Tipe</TableHead>
                   <TableHead>Outlet</TableHead>
                   <TableHead>Kategori</TableHead>
                   <TableHead className="text-right">Stok</TableHead>
@@ -82,6 +83,11 @@ export default async function MaterialsPage() {
                   <TableRow key={m.id}>
                     <TableCell className="font-mono text-xs">{m.id}</TableCell>
                     <TableCell className="font-medium">{m.namaBahan}</TableCell>
+                    <TableCell>
+                      <Badge variant={m.tipeBahan === "raw_bulk" ? "warning" : "outline"}>
+                        {m.tipeBahan === "raw_bulk" ? "Raw/Bulk" : "Packaged"}
+                      </Badge>
+                    </TableCell>
                     <TableCell>{m.outletName}</TableCell>
                     <TableCell className="capitalize">{m.kategoriBahan?.replace(/_/g, " ")}</TableCell>
                     <TableCell className="text-right">

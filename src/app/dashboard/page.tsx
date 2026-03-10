@@ -1,10 +1,12 @@
 import { db } from "@/lib/db";
-import { systemConfigs, masterBahan, outlets } from "@/lib/db/schema";
+import { systemConfigs, masterBahan, outlets, purchaseOrders, users } from "@/lib/db/schema";
 import { eq, count } from "drizzle-orm";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MigrationCard } from "@/components/migration-card";
-import { Package, Store, AlertTriangle, CheckCircle } from "lucide-react";
+import { Package, Store, AlertTriangle, CheckCircle, ShoppingCart, Users } from "lucide-react";
 import { getStockStatus } from "@/lib/utils";
+import { headers } from "next/headers";
+import { getSessionUser, isAdmin } from "@/lib/auth";
 
 async function getMigrationStatus(): Promise<boolean> {
   try {
@@ -21,9 +23,16 @@ async function getMigrationStatus(): Promise<boolean> {
 async function getStats() {
   try {
     const [outletCount] = await db.select({ count: count() }).from(outlets);
+    const [userCount] = await db.select({ count: count() }).from(users);
+    const [poCount] = await db
+      .select({ count: count() })
+      .from(purchaseOrders)
+      .where(eq(purchaseOrders.status, "draft"));
     const allBahan = await db.select().from(masterBahan);
 
-    let safe = 0, warning = 0, critical = 0;
+    let safe = 0,
+      warning = 0,
+      critical = 0;
     for (const bahan of allBahan) {
       const status = getStockStatus(
         bahan.stokSaatIni,
@@ -39,16 +48,20 @@ async function getStats() {
     return {
       totalOutlets: outletCount.count,
       totalBahan: allBahan.length,
+      totalUsers: userCount.count,
+      draftPOs: poCount.count,
       safe,
       warning,
       critical,
     };
   } catch {
-    return { totalOutlets: 0, totalBahan: 0, safe: 0, warning: 0, critical: 0 };
+    return { totalOutlets: 0, totalBahan: 0, totalUsers: 0, draftPOs: 0, safe: 0, warning: 0, critical: 0 };
   }
 }
 
 export default async function DashboardPage() {
+  const appUser = await getSessionUser(await headers());
+  const userIsAdmin = isAdmin(appUser);
   const [isMigrationDone, stats] = await Promise.all([getMigrationStatus(), getStats()]);
 
   return (
@@ -60,7 +73,7 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <MigrationCard isMigrationDone={isMigrationDone} />
+      {userIsAdmin && <MigrationCard isMigrationDone={isMigrationDone} />}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -108,6 +121,32 @@ export default async function DashboardPage() {
             </p>
           </CardContent>
         </Card>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Draft PO</CardTitle>
+            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.draftPOs}</div>
+            <p className="text-xs text-muted-foreground">Menunggu dikirim</p>
+          </CardContent>
+        </Card>
+
+        {userIsAdmin && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total User</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalUsers}</div>
+              <p className="text-xs text-muted-foreground">Pengguna terdaftar</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

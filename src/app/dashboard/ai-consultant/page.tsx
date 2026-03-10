@@ -18,13 +18,13 @@ import type { StockStatus } from "@/lib/utils";
 interface Recommendation {
   id: string;
   nama: string;
+  tipeBahan: string;
   status: StockStatus;
   action: string;
-  shortRec: string;
+  aiText: string;
 }
 
 interface AIResult {
-  analysis: string;
   recommendations: Recommendation[];
   summary: { total: number; critical: number; warning: number; safe: number };
 }
@@ -138,6 +138,7 @@ export default function AIConsultantPage() {
                   <TableRow>
                     <TableHead>ID</TableHead>
                     <TableHead>Nama Bahan</TableHead>
+                    <TableHead>Tipe</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Action</TableHead>
                     <TableHead>Rekomendasi AI</TableHead>
@@ -149,6 +150,11 @@ export default function AIConsultantPage() {
                       <TableCell className="font-mono text-xs">{rec.id}</TableCell>
                       <TableCell className="font-medium">{rec.nama}</TableCell>
                       <TableCell>
+                        <Badge variant={rec.tipeBahan === "raw_bulk" ? "warning" : "outline"}>
+                          {rec.tipeBahan === "raw_bulk" ? "Raw/Bulk" : "Packaged"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
                         <Badge variant={statusVariant(rec.status)}>{rec.status}</Badge>
                       </TableCell>
                       <TableCell>
@@ -156,7 +162,7 @@ export default function AIConsultantPage() {
                           {rec.action}
                         </Badge>
                       </TableCell>
-                      <TableCell className="max-w-md text-sm">{rec.shortRec}</TableCell>
+                      <TableCell className="max-w-md text-sm whitespace-pre-wrap">{rec.aiText}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -164,16 +170,6 @@ export default function AIConsultantPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Analisis Lengkap AI</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="whitespace-pre-wrap rounded-lg bg-slate-50 p-4 text-sm">
-                {result.analysis}
-              </div>
-            </CardContent>
-          </Card>
         </>
       )}
     </div>
