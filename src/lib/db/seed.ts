@@ -29,8 +29,8 @@ async function seed() {
 
   // 3. users — seed via Better Auth API so credentials exist in auth tables
   const authUsers = [
-    { email: "admin@easygoing.com", password: "admin123", name: "Admin Utama" },
-    { email: "manager@easygoing.com", password: "manager123", name: "Manager Outlet" },
+    { email: "admin@easygoing.com", password: "EasyGoing@Adm1n#2026", name: "Admin Utama" },
+    { email: "manager@easygoing.com", password: "EasyGoing@Mgr1#2026", name: "Manager Outlet" },
   ];
   for (const u of authUsers) {
     try {
@@ -66,10 +66,10 @@ async function seed() {
   
   console.log("\n🔐 ADMIN CREDENTIALS:");
   console.log("   Email: admin@easygoing.com");
-  console.log("   Password: admin123");
+  console.log("   Password: EasyGoing@Adm1n#2026");
   console.log("\n🔐 MANAGER CREDENTIALS:");
   console.log("   Email: manager@easygoing.com");
-  console.log("   Password: manager123\n");
+  console.log("   Password: EasyGoing@Mgr1#2026\n");
 
   // 4. master_bahan (stok_saat_ini REMOVED per PRD - stock is transient from uploads)
   const seedBahan = [
