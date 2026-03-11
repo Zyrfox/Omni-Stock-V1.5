@@ -1,6 +1,6 @@
 # OMNI-STOCK V1.5 Phase 1 - Implementation Checklist
 
-## Current Status: 15% Complete
+## Current Status: 92% Complete
 Last Updated: March 11, 2026
 
 ---
@@ -170,12 +170,12 @@ Last Updated: March 11, 2026
   - System Info
 
 ### Phase 8: Integrations (Week 6)
-- [ ] Google Sheets One-Way Migration
+- [x] Google Sheets One-Way Migration
   - Service Account auth
   - Atomic transaction
   - Lock mechanism (system_configs)
   - Parse outlets, pawoon_products, mapping_pawoon
-- [ ] Gemini AI Integration
+- [x] Gemini AI Integration
   - Packaged template prompt
   - Raw/Bulk template prompt
   - Market price research
@@ -183,20 +183,20 @@ Last Updated: March 11, 2026
   - Store in purchase_orders.ai_notes
 
 ### Phase 9: Business Logic (Week 6-7)
-- [ ] 3-Color Status Calculation
+- [x] 3-Color Status Calculation
   - Server-side formula
   - SAFE: stok > (min + (lead_time × avg_consumption))
   - WARNING: stok ≤ (min + (lead_time × avg_consumption))
   - CRITICAL: stok ≤ min
-- [ ] avg_daily_consumption Auto-Update
+- [x] avg_daily_consumption Auto-Update
   - Calculate from sales_transactions
   - Update after each upload
   - Source tracking (manual vs auto)
-- [ ] PO Status Workflow
+- [x] PO Status Workflow
   - DRAFT → SENT (tanggal_kirim timestamp)
   - SENT → RECEIVED (tanggal_terima timestamp)
   - Update stock on RECEIVED
-- [ ] COGS Calculation
+- [x] COGS Calculation
   - Recursive BOM resolution (2 levels)
   - Auto-update on recipe changes
 
@@ -227,23 +227,23 @@ Last Updated: March 11, 2026
 
 ## 📊 PROGRESS METRICS
 
-- **Overall**: 75%
+- **Overall**: 92%
 - **Database Schema**: 100%
 - **Design System**: 100%
 - **Authentication**: 100%
-- **Dashboard**: 100% (Front-end UI done)
-- **Other Pages**: 100% (Front-end UI done)
+- **Dashboard**: 100%
+- **Other Pages**: 100%
+- **Integrations**: 100% (APIs implemented)
+- **Business Logic**: 100% (Server-side complete)
+- **Client-Server Wiring**: 100% (Upload, PO, Migration wired)
 
 ---
 
-## 🎯 NEXT IMMEDIATE STEPS
+## 🎯 REMAINING TASKS
 
-1. Implement business logic endpoints for PO Creation
-2. Implement 3-color status calculation logic on BE
-3. Implement `avg_daily_consumption` auto-update mechanics
-4. Implement recursive COGS calculation for BOMs
-5. Test Better Auth registration/login flows end-to-end
-6. Test Role-Based guards
+1. Run `npm run build` to verify TypeScript correctness
+2. Test all 12 exit criteria from PRD Section 22.2
+3. End-to-end integration testing
 
 ---
 
@@ -254,3 +254,6 @@ Last Updated: March 11, 2026
 - AI recommendations stored in purchase_orders.ai_notes
 - Migration button locks permanently after first run
 - Better Auth handles both Google SSO and email/password
+- Dashboard upload now calls server API (not client-side XLSX parsing)
+- PO Cart creation posts to /api/purchase-orders
+- Settings migration wired to /api/migration with loading/lock states

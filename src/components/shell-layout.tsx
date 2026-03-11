@@ -6,16 +6,20 @@ import { Topbar } from "./topbar";
 
 interface ShellLayoutProps {
   userRole?: "admin" | "manager";
+  userName?: string;
+  userEmail?: string;
   children: React.ReactNode;
 }
 
-export function ShellLayout({ userRole = "manager", children }: ShellLayoutProps) {
+export function ShellLayout({ userRole = "manager", userName, userEmail, children }: ShellLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "hsl(var(--bg))" }}>
       <Sidebar 
-        userRole={userRole} 
+        userRole={userRole}
+        userName={userName}
+        userEmail={userEmail}
         isCollapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
       />

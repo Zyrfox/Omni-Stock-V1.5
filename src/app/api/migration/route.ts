@@ -26,17 +26,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initialize Google Sheets API
+    // Initialize Google Sheets API — uses GSHEET_SERVICE_ACCOUNT_KEY (JSON blob) per PRD Section 21
+    const serviceAccountKey = JSON.parse(process.env.GSHEET_SERVICE_ACCOUNT_KEY || "{}");
     const gAuth = new google.auth.GoogleAuth({
       credentials: {
-        client_email: process.env.GOOGLE_SHEETS_CLIENT_EMAIL,
-        private_key: process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+        client_email: serviceAccountKey.client_email,
+        private_key: serviceAccountKey.private_key?.replace(/\\n/g, "\n"),
       },
       scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
     });
 
     const sheets = google.sheets({ version: "v4", auth: gAuth });
-    const spreadsheetId = process.env.GOOGLE_SHEETS_ID!;
+    const spreadsheetId = process.env.GSHEET_SPREADSHEET_ID!;
 
     // 1. Fetch sys_outlets
     const outletsRes = await sheets.spreadsheets.values.get({ spreadsheetId, range: "sys_outlets!A2:B" });

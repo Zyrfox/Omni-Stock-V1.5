@@ -95,17 +95,49 @@ function Timeline({ status }: { status: string }) {
 }
 
 export function POLogsClient({ totalPO, draftCount, sentCount, receivedCount, poList }: Props) {
+  const [poListState, setPoListState] = useState<PO[]>(poList);
   const [selectedPO, setSelectedPO] = useState<PO | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [error, setError] = useState<string>("");
+
+  const counts = {
+    total: poListState.length,
+    draft: poListState.filter(p => p.status === "draft").length,
+    sent: poListState.filter(p => p.status === "sent").length,
+    received: poListState.filter(p => p.status === "received").length,
+  };
 
   const statCards = [
-    { label: "Total PO", value: totalPO, icon: ShoppingCart, color: "hsl(var(--blue))", bg: "rgba(96,165,250,0.1)", sub: "Semua PO" },
-    { label: "Draft", value: draftCount, icon: FileText, color: "hsl(var(--muted))", bg: "rgba(107,114,128,0.1)", sub: "Belum dikirim" },
-    { label: "Sent", value: sentCount, icon: Send, color: "hsl(var(--amber))", bg: "rgba(245,158,11,0.1)", sub: "Menunggu konfirmasi" },
-    { label: "Received", value: receivedCount, icon: CheckCircle2, color: "hsl(var(--green))", bg: "rgba(34,197,94,0.1)", sub: "Diterima" },
+    { label: "Total PO", value: counts.total, icon: ShoppingCart, color: "hsl(var(--blue))", bg: "rgba(96,165,250,0.1)", sub: "Semua PO", filter: "all" },
+    { label: "Draft", value: counts.draft, icon: FileText, color: "hsl(var(--muted))", bg: "rgba(107,114,128,0.1)", sub: "Belum dikirim", filter: "draft" },
+    { label: "Sent", value: counts.sent, icon: Send, color: "hsl(var(--amber))", bg: "rgba(245,158,11,0.1)", sub: "Menunggu konfirmasi", filter: "sent" },
+    { label: "Received", value: counts.received, icon: CheckCircle2, color: "hsl(var(--green))", bg: "rgba(34,197,94,0.1)", sub: "Diterima", filter: "received" },
   ];
 
-  const filtered = filterStatus === "all" ? poList : poList.filter((p) => p.status === filterStatus);
+  const filtered = filterStatus === "all" ? poListState : poListState.filter((p) => p.status === filterStatus);
+
+  async function handleAction(po: PO, action: "send" | "receive") {
+    setLoadingId(po.id);
+    setError("");
+    try {
+      const res = await fetch("/api/purchase-orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: po.id, action }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Gagal memperbarui PO");
+      const newStatus = action === "send" ? "sent" : "received";
+      const updatedPO = { ...po, status: newStatus };
+      setPoListState(prev => prev.map(p => p.id === po.id ? updatedPO : p));
+      if (selectedPO?.id === po.id) setSelectedPO(updatedPO);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan");
+    } finally {
+      setLoadingId(null);
+    }
+  }
 
   return (
     <div style={{ color: "hsl(var(--text))" }}>
@@ -114,13 +146,20 @@ export function POLogsClient({ totalPO, draftCount, sentCount, receivedCount, po
         <p style={{ fontSize: "13px", color: "hsl(var(--muted))", marginTop: "2px" }}>Manajemen Purchase Order dan tracking pengiriman</p>
       </div>
 
+      {error && (
+        <div style={{ padding: "10px 14px", borderRadius: "8px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "hsl(var(--red))", fontSize: "13px", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>{error}</span>
+          <button onClick={() => setError("")} style={{ background: "transparent", border: "none", cursor: "pointer", color: "hsl(var(--red))" }}>×</button>
+        </div>
+      )}
+
       {/* Stat Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "20px" }}>
         {statCards.map((sc) => (
           <div
             key={sc.label}
-            style={{ ...card, cursor: "pointer" }}
-            onClick={() => setFilterStatus(sc.label === "Total PO" ? "all" : sc.label.toLowerCase())}
+            style={{ ...card, cursor: "pointer", outline: filterStatus === sc.filter ? `2px solid hsl(var(--accent))` : "none" }}
+            onClick={() => setFilterStatus(sc.filter)}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
@@ -188,13 +227,21 @@ export function POLogsClient({ totalPO, draftCount, sentCount, receivedCount, po
                     <td style={{ padding: "10px 12px" }}>
                       <div style={{ display: "flex", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
                         {po.status === "draft" && (
-                          <button style={{ fontSize: "11px", padding: "4px 8px", borderRadius: "6px", border: "none", cursor: "pointer", background: "rgba(245,158,11,0.15)", color: "hsl(var(--amber))", fontWeight: 600, display: "flex", alignItems: "center", gap: "3px" }}>
-                            <Send style={{ width: 10, height: 10 }} /> Kirim
+                          <button
+                            disabled={loadingId === po.id}
+                            onClick={() => handleAction(po, "send")}
+                            style={{ fontSize: "11px", padding: "4px 8px", borderRadius: "6px", border: "none", cursor: "pointer", background: "rgba(245,158,11,0.15)", color: "hsl(var(--amber))", fontWeight: 600, display: "flex", alignItems: "center", gap: "3px", opacity: loadingId === po.id ? 0.6 : 1 }}
+                          >
+                            <Send style={{ width: 10, height: 10 }} /> {loadingId === po.id ? "..." : "Kirim"}
                           </button>
                         )}
                         {po.status === "sent" && (
-                          <button style={{ fontSize: "11px", padding: "4px 8px", borderRadius: "6px", border: "none", cursor: "pointer", background: "rgba(34,197,94,0.15)", color: "hsl(var(--green))", fontWeight: 600, display: "flex", alignItems: "center", gap: "3px" }}>
-                            <CheckCircle2 style={{ width: 10, height: 10 }} /> Terima
+                          <button
+                            disabled={loadingId === po.id}
+                            onClick={() => handleAction(po, "receive")}
+                            style={{ fontSize: "11px", padding: "4px 8px", borderRadius: "6px", border: "none", cursor: "pointer", background: "rgba(34,197,94,0.15)", color: "hsl(var(--green))", fontWeight: 600, display: "flex", alignItems: "center", gap: "3px", opacity: loadingId === po.id ? 0.6 : 1 }}
+                          >
+                            <CheckCircle2 style={{ width: 10, height: 10 }} /> {loadingId === po.id ? "..." : "Terima"}
                           </button>
                         )}
                         <button style={{ fontSize: "11px", padding: "4px 8px", borderRadius: "6px", border: "1px solid hsl(var(--border2))", cursor: "pointer", background: "transparent", color: "hsl(var(--muted))", fontWeight: 600 }}>
@@ -253,13 +300,21 @@ export function POLogsClient({ totalPO, draftCount, sentCount, receivedCount, po
 
             <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "20px" }}>
               {selectedPO.status === "draft" && (
-                <button style={{ padding: "8px 16px", borderRadius: "8px", border: "none", cursor: "pointer", background: "rgba(245,158,11,0.15)", color: "hsl(var(--amber))", fontWeight: 700, fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <Send style={{ width: 14, height: 14 }} /> Kirim PO
+                <button
+                  disabled={loadingId === selectedPO.id}
+                  onClick={() => handleAction(selectedPO, "send")}
+                  style={{ padding: "8px 16px", borderRadius: "8px", border: "none", cursor: "pointer", background: "rgba(245,158,11,0.15)", color: "hsl(var(--amber))", fontWeight: 700, fontSize: "13px", display: "flex", alignItems: "center", gap: "6px", opacity: loadingId === selectedPO.id ? 0.6 : 1 }}
+                >
+                  <Send style={{ width: 14, height: 14 }} /> {loadingId === selectedPO.id ? "Mengirim..." : "Kirim PO"}
                 </button>
               )}
               {selectedPO.status === "sent" && (
-                <button style={{ padding: "8px 16px", borderRadius: "8px", border: "none", cursor: "pointer", background: "rgba(34,197,94,0.15)", color: "hsl(var(--green))", fontWeight: 700, fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <CheckCircle2 style={{ width: 14, height: 14 }} /> Konfirmasi Terima
+                <button
+                  disabled={loadingId === selectedPO.id}
+                  onClick={() => handleAction(selectedPO, "receive")}
+                  style={{ padding: "8px 16px", borderRadius: "8px", border: "none", cursor: "pointer", background: "rgba(34,197,94,0.15)", color: "hsl(var(--green))", fontWeight: 700, fontSize: "13px", display: "flex", alignItems: "center", gap: "6px", opacity: loadingId === selectedPO.id ? 0.6 : 1 }}
+                >
+                  <CheckCircle2 style={{ width: 14, height: 14 }} /> {loadingId === selectedPO.id ? "Memproses..." : "Konfirmasi Terima"}
                 </button>
               )}
               <button style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid hsl(var(--border2))", cursor: "pointer", background: "transparent", color: "hsl(var(--muted))", fontSize: "13px" }} onClick={() => setSelectedPO(null)}>

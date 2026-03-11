@@ -53,15 +53,107 @@ const inputStyle = {
   boxSizing: "border-box" as const,
 };
 
-export function SuppliersClient({ vendors, vendorCount, distinctBahanCount, waCount, statsMap, spendMap, poHistory }: Props) {
+export function SuppliersClient({ vendors: initialVendors, vendorCount, distinctBahanCount, waCount, statsMap, spendMap, poHistory }: Props) {
+  const [vendors, setVendors] = useState<Vendor[]>(initialVendors);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState<Vendor | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [addForm, setAddForm] = useState({
+    namaVendor: "",
+    kontakWa: "",
+    estimasiPengiriman: "",
+    noRekening: "",
+  });
+
+  const [editForm, setEditForm] = useState({
+    namaVendor: "",
+    kontakWa: "",
+    estimasiPengiriman: "",
+    noRekening: "",
+  });
 
   const statCards = [
-    { label: "Total Vendor", value: vendorCount, icon: Truck, color: "hsl(var(--blue))", bg: "rgba(96,165,250,0.1)", sub: "Supplier aktif" },
+    { label: "Total Vendor", value: vendors.length, icon: Truck, color: "hsl(var(--blue))", bg: "rgba(96,165,250,0.1)", sub: "Supplier aktif" },
     { label: "Total Bahan", value: distinctBahanCount, icon: Plus, color: "hsl(var(--green))", bg: "rgba(34,197,94,0.1)", sub: "Distinct bahan baku" },
-    { label: "Vendor dengan WA", value: waCount, icon: MessageCircle, color: "hsl(var(--accent))", bg: "rgba(200,241,53,0.1)", sub: "Bisa dihubungi WA" },
+    { label: "Vendor dengan WA", value: vendors.filter((v) => v.kontakWa).length, icon: MessageCircle, color: "hsl(var(--accent))", bg: "rgba(200,241,53,0.1)", sub: "Bisa dihubungi WA" },
   ];
+
+  const handleAddVendor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/vendors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          namaVendor: addForm.namaVendor,
+          kontakWa: addForm.kontakWa || undefined,
+          estimasiPengiriman: Number(addForm.estimasiPengiriman),
+          noRekening: addForm.noRekening || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Gagal menambahkan vendor");
+        return;
+      }
+      setVendors((prev) => [...prev, data.data]);
+      setShowAddModal(false);
+      setAddForm({ namaVendor: "", kontakWa: "", estimasiPengiriman: "", noRekening: "" });
+    } catch {
+      setError("Koneksi gagal. Coba lagi.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditVendor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showEditModal) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/vendors", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: showEditModal.id,
+          namaVendor: editForm.namaVendor,
+          kontakWa: editForm.kontakWa || null,
+          estimasiPengiriman: Number(editForm.estimasiPengiriman),
+          noRekening: editForm.noRekening || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Gagal mengupdate vendor");
+        return;
+      }
+      setVendors((prev) => prev.map((v) => v.id === showEditModal.id ? data.data : v));
+      if (selectedVendor?.id === showEditModal.id) setSelectedVendor(data.data);
+      setShowEditModal(null);
+    } catch {
+      setError("Koneksi gagal. Coba lagi.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openEdit = (v: Vendor, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditForm({
+      namaVendor: v.namaVendor,
+      kontakWa: v.kontakWa || "",
+      estimasiPengiriman: String(v.estimasiPengiriman),
+      noRekening: v.noRekening || "",
+    });
+    setShowEditModal(v);
+    setError(null);
+  };
 
   if (selectedVendor) {
     const vendorPOs = poHistory.filter((p) => p.vendorId === selectedVendor.id);
@@ -79,16 +171,23 @@ export function SuppliersClient({ vendors, vendorCount, distinctBahanCount, waCo
           </button>
           <div>
             <h1 style={{ fontSize: "20px", fontWeight: 700 }}>{selectedVendor.namaVendor}</h1>
-            <p style={{ fontSize: "12px", color: "hsl(var(--muted))" }}>{selectedVendor.id}</p>
+            <p style={{ fontSize: "12px", color: "hsl(var(--muted))", fontFamily: "monospace" }}>{selectedVendor.id}</p>
           </div>
+          <button
+            style={{ marginLeft: "auto", background: "rgba(96,165,250,0.15)", border: "1px solid rgba(96,165,250,0.3)", borderRadius: "8px", padding: "6px 12px", color: "hsl(var(--blue))", cursor: "pointer", fontSize: "12px", fontWeight: 600 }}
+            onClick={(e) => openEdit(selectedVendor, e)}
+          >
+            <Edit2 style={{ width: 12, height: 12, display: "inline", marginRight: "4px" }} />
+            Edit Vendor
+          </button>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "20px" }}>
           {[
-            { label: "Nama Vendor", value: selectedVendor.namaVendor },
-            { label: "WhatsApp", value: selectedVendor.kontakWa ?? "—" },
-            { label: "No. Rekening", value: selectedVendor.noRekening ?? "—" },
-            { label: "Est. Pengiriman", value: `${selectedVendor.estimasiPengiriman} hari` },
+            { label: "📞 Kontak WA", value: selectedVendor.kontakWa ?? "—" },
+            { label: "💳 Info Pembayaran", value: selectedVendor.noRekening ?? "—" },
+            { label: "⏱ Lead Time", value: `${selectedVendor.estimasiPengiriman} hari` },
+            { label: "📈 Total Pengeluaran", value: fmt(totalSpend) },
           ].map((info) => (
             <div key={info.label} style={card}>
               <p style={{ fontSize: "11px", color: "hsl(var(--muted))", textTransform: "uppercase", marginBottom: "6px" }}>{info.label}</p>
@@ -103,7 +202,7 @@ export function SuppliersClient({ vendors, vendorCount, distinctBahanCount, waCo
             <p style={{ fontSize: "28px", fontWeight: 800, color: "hsl(var(--blue))" }}>{itemCount}</p>
           </div>
           <div style={card}>
-            <p style={{ fontSize: "11px", color: "hsl(var(--muted))", textTransform: "uppercase", marginBottom: "6px" }}>Total Pengeluaran</p>
+            <p style={{ fontSize: "11px", color: "hsl(var(--muted))", textTransform: "uppercase", marginBottom: "6px" }}>Pengeluaran Bulan Ini</p>
             <p style={{ fontSize: "24px", fontWeight: 800, color: "hsl(var(--accent))" }}>{fmt(totalSpend)}</p>
           </div>
         </div>
@@ -176,7 +275,7 @@ export function SuppliersClient({ vendors, vendorCount, distinctBahanCount, waCo
           <span style={{ fontWeight: 700, fontSize: "13px" }}>Daftar Vendor</span>
           <button
             style={{ background: "linear-gradient(135deg, #C8F135, #86EF3C)", color: "#0A0A0F", fontWeight: 800, borderRadius: "8px", padding: "8px 16px", border: "none", cursor: "pointer", fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}
-            onClick={() => setShowAddModal(true)}
+            onClick={() => { setShowAddModal(true); setError(null); }}
           >
             <Plus style={{ width: 14, height: 14 }} /> Tambah Vendor
           </button>
@@ -220,7 +319,7 @@ export function SuppliersClient({ vendors, vendorCount, distinctBahanCount, waCo
                     {v.noRekening ?? "—"}
                   </td>
                   <td style={{ padding: "10px 12px" }}>
-                    <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 7px", borderRadius: "4px", background: "rgba(96,165,250,0.15)", color: "hsl(var(--blue))", display: "flex", alignItems: "center", gap: "4px", width: "fit-content" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 7px", borderRadius: "4px", background: "rgba(96,165,250,0.15)", color: "hsl(var(--blue))", display: "inline-flex", alignItems: "center", gap: "4px" }}>
                       <Clock style={{ width: 10, height: 10 }} /> {v.estimasiPengiriman} hari
                     </span>
                   </td>
@@ -230,12 +329,15 @@ export function SuppliersClient({ vendors, vendorCount, distinctBahanCount, waCo
                   </td>
                   <td style={{ padding: "10px 12px" }}>
                     <div style={{ display: "flex", gap: "6px" }} onClick={(e) => e.stopPropagation()}>
-                      <button style={{ fontSize: "11px", padding: "4px 8px", borderRadius: "6px", border: "none", cursor: "pointer", background: "rgba(96,165,250,0.15)", color: "hsl(var(--blue))" }}>
+                      <button
+                        style={{ fontSize: "11px", padding: "4px 8px", borderRadius: "6px", border: "none", cursor: "pointer", background: "rgba(96,165,250,0.15)", color: "hsl(var(--blue))" }}
+                        onClick={(e) => openEdit(v, e)}
+                      >
                         <Edit2 style={{ width: 12, height: 12 }} />
                       </button>
                       <button
                         style={{ fontSize: "11px", padding: "4px 8px", borderRadius: "6px", border: "none", cursor: "pointer", background: "rgba(96,165,250,0.1)", color: "hsl(var(--blue))", fontWeight: 600 }}
-                        onClick={() => setSelectedVendor(v)}
+                        onClick={(e) => { e.stopPropagation(); setSelectedVendor(v); }}
                       >
                         Detail →
                       </button>
@@ -250,34 +352,86 @@ export function SuppliersClient({ vendors, vendorCount, distinctBahanCount, waCo
 
       {/* Add Vendor Modal */}
       {showAddModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ ...card, width: "480px" }}>
+            <div style={{ height: "3px", background: "linear-gradient(90deg, #C8F135, #86EF3C, transparent)", borderRadius: "12px 12px 0 0", margin: "-18px -18px 18px" }} />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
               <h2 style={{ fontWeight: 700, fontSize: "16px" }}>Tambah Vendor</h2>
-              <button style={{ background: "transparent", border: "none", cursor: "pointer", color: "hsl(var(--muted))" }} onClick={() => setShowAddModal(false)}>
+              <button style={{ background: "transparent", border: "none", cursor: "pointer", color: "hsl(var(--muted))" }} onClick={() => { setShowAddModal(false); setError(null); }}>
                 <X style={{ width: 18, height: 18 }} />
               </button>
             </div>
-            <form style={{ display: "flex", flexDirection: "column", gap: "14px" }} onSubmit={(e) => { e.preventDefault(); alert("Connect to server action"); }}>
+            {error && (
+              <div style={{ padding: "8px 12px", borderRadius: "6px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", marginBottom: "12px", fontSize: "12px", color: "hsl(var(--red))" }}>
+                ⚠ {error}
+              </div>
+            )}
+            <form style={{ display: "flex", flexDirection: "column", gap: "14px" }} onSubmit={handleAddVendor}>
               <div>
                 <label style={{ fontSize: "12px", color: "hsl(var(--muted))", display: "block", marginBottom: "6px" }}>Nama Vendor *</label>
-                <input type="text" required style={inputStyle} placeholder="Nama supplier" />
+                <input type="text" required style={inputStyle} placeholder="Nama supplier" value={addForm.namaVendor} onChange={(e) => setAddForm((p) => ({ ...p, namaVendor: e.target.value }))} />
               </div>
               <div>
                 <label style={{ fontSize: "12px", color: "hsl(var(--muted))", display: "block", marginBottom: "6px" }}>WhatsApp</label>
-                <input type="text" style={inputStyle} placeholder="628xx..." />
+                <input type="text" style={inputStyle} placeholder="628xx..." value={addForm.kontakWa} onChange={(e) => setAddForm((p) => ({ ...p, kontakWa: e.target.value }))} />
               </div>
               <div>
                 <label style={{ fontSize: "12px", color: "hsl(var(--muted))", display: "block", marginBottom: "6px" }}>Lead Time (hari) *</label>
-                <input type="number" required style={inputStyle} placeholder="1" min="1" />
+                <input type="number" required min="1" style={inputStyle} placeholder="1" value={addForm.estimasiPengiriman} onChange={(e) => setAddForm((p) => ({ ...p, estimasiPengiriman: e.target.value }))} />
               </div>
               <div>
                 <label style={{ fontSize: "12px", color: "hsl(var(--muted))", display: "block", marginBottom: "6px" }}>Info Rekening</label>
-                <input type="text" style={inputStyle} placeholder="BCA 1234567890 a/n ..." />
+                <input type="text" style={inputStyle} placeholder="BCA 1234567890 a/n ..." value={addForm.noRekening} onChange={(e) => setAddForm((p) => ({ ...p, noRekening: e.target.value }))} />
               </div>
               <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "6px" }}>
-                <button type="button" style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid hsl(var(--border2))", background: "transparent", color: "hsl(var(--muted))", cursor: "pointer", fontSize: "13px" }} onClick={() => setShowAddModal(false)}>Batal</button>
-                <button type="submit" style={{ padding: "8px 20px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #C8F135, #86EF3C)", color: "#0A0A0F", fontWeight: 800, cursor: "pointer", fontSize: "13px" }}>Simpan Vendor</button>
+                <button type="button" style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid hsl(var(--border2))", background: "transparent", color: "hsl(var(--muted))", cursor: "pointer", fontSize: "13px" }} onClick={() => { setShowAddModal(false); setError(null); }} disabled={loading}>Batal</button>
+                <button type="submit" disabled={loading} style={{ padding: "8px 20px", borderRadius: "8px", border: "none", background: loading ? "rgba(107,114,128,0.3)" : "linear-gradient(135deg, #C8F135, #86EF3C)", color: loading ? "hsl(var(--muted))" : "#0A0A0F", fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", fontSize: "13px" }}>
+                  {loading ? "Menyimpan..." : "Simpan Vendor"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Vendor Modal */}
+      {showEditModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ ...card, width: "480px" }}>
+            <div style={{ height: "3px", background: "linear-gradient(90deg, #C8F135, #86EF3C, transparent)", borderRadius: "12px 12px 0 0", margin: "-18px -18px 18px" }} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <h2 style={{ fontWeight: 700, fontSize: "16px" }}>Edit Vendor</h2>
+              <button style={{ background: "transparent", border: "none", cursor: "pointer", color: "hsl(var(--muted))" }} onClick={() => { setShowEditModal(null); setError(null); }}>
+                <X style={{ width: 18, height: 18 }} />
+              </button>
+            </div>
+            {error && (
+              <div style={{ padding: "8px 12px", borderRadius: "6px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", marginBottom: "12px", fontSize: "12px", color: "hsl(var(--red))" }}>
+                ⚠ {error}
+              </div>
+            )}
+            <form style={{ display: "flex", flexDirection: "column", gap: "14px" }} onSubmit={handleEditVendor}>
+              <div>
+                <label style={{ fontSize: "12px", color: "hsl(var(--muted))", display: "block", marginBottom: "6px" }}>Nama Vendor *</label>
+                <input type="text" required style={inputStyle} value={editForm.namaVendor} onChange={(e) => setEditForm((p) => ({ ...p, namaVendor: e.target.value }))} />
+              </div>
+              <div>
+                <label style={{ fontSize: "12px", color: "hsl(var(--muted))", display: "block", marginBottom: "6px" }}>WhatsApp</label>
+                <input type="text" style={inputStyle} placeholder="628xx..." value={editForm.kontakWa} onChange={(e) => setEditForm((p) => ({ ...p, kontakWa: e.target.value }))} />
+              </div>
+              <div>
+                <label style={{ fontSize: "12px", color: "hsl(var(--muted))", display: "block", marginBottom: "6px" }}>Lead Time (hari) *</label>
+                <input type="number" required min="1" style={inputStyle} value={editForm.estimasiPengiriman} onChange={(e) => setEditForm((p) => ({ ...p, estimasiPengiriman: e.target.value }))} />
+              </div>
+              <div>
+                <label style={{ fontSize: "12px", color: "hsl(var(--muted))", display: "block", marginBottom: "6px" }}>Info Rekening</label>
+                <input type="text" style={inputStyle} value={editForm.noRekening} onChange={(e) => setEditForm((p) => ({ ...p, noRekening: e.target.value }))} />
+              </div>
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "6px" }}>
+                <button type="button" style={{ padding: "8px 16px", borderRadius: "8px", border: "1px solid hsl(var(--border2))", background: "transparent", color: "hsl(var(--muted))", cursor: "pointer", fontSize: "13px" }} onClick={() => { setShowEditModal(null); setError(null); }} disabled={loading}>Batal</button>
+                <button type="submit" disabled={loading} style={{ padding: "8px 20px", borderRadius: "8px", border: "none", background: loading ? "rgba(107,114,128,0.3)" : "linear-gradient(135deg, #C8F135, #86EF3C)", color: loading ? "hsl(var(--muted))" : "#0A0A0F", fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", fontSize: "13px" }}>
+                  {loading ? "Menyimpan..." : "Simpan Perubahan"}
+                </button>
               </div>
             </form>
           </div>

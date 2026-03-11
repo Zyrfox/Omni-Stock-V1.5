@@ -10,5 +10,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session) redirect("/login");
   const appUser = await getSessionUser(await headers());
   if (!appUser) redirect("/login?error=unregistered");
-  return <ShellLayout userRole={appUser.role}>{children}</ShellLayout>;
+  if (appUser.mustChangePassword) redirect("/change-password");
+  return (
+    <ShellLayout userRole={appUser.role} userName={appUser.nama} userEmail={appUser.email}>
+      {children}
+    </ShellLayout>
+  );
 }

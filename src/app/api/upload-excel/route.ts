@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
 
     const results: ParsedItem[] = [];
     const consumptionMap = new Map<string, number>();
+    const uniqueDates = new Set<string>();
 
     for (const row of rows) {
       const menuName = String(row["nama_menu"] || row["Nama Menu"] || row["product_name"] || "");
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
       const tanggal = String(row["tanggal"] || row["Tanggal"] || row["date"] || new Date().toISOString().split("T")[0]);
 
       if (!menuName || qtyTerjual <= 0) continue;
+      uniqueDates.add(tanggal);
 
       // Match menu
       const menu = allMenu.find((m) => m.namaMenu.toLowerCase() === menuName.toLowerCase());
@@ -102,15 +104,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Update avg_daily_consumption (auto mode) — stok is transient, NOT stored in DB
+    // Update avg_daily_consumption (auto mode only) — stok is transient, NOT stored in DB
+    const numDays = Math.max(1, uniqueDates.size);
     for (const [bahanId, totalUsed] of consumptionMap.entries()) {
       const bahan = allBahan.find((b) => b.id === bahanId);
       if (!bahan) continue;
 
-      // Simple moving average: blend old avg with new data point
-      const newAvg = bahan.avgConsumptionSource === "manual"
-        ? bahan.avgDailyConsumption
-        : (bahan.avgDailyConsumption + totalUsed) / 2;
+      // Skip manual source — user set it intentionally, don't override
+      if (bahan.avgConsumptionSource === "manual") continue;
+
+      // Daily consumption from this upload period
+      const uploadDailyAvg = totalUsed / numDays;
+
+      // Exponential moving average: weight new data at 30%, keep history at 70%
+      const prevAvg = bahan.avgDailyConsumption || uploadDailyAvg;
+      const newAvg = parseFloat((prevAvg * 0.7 + uploadDailyAvg * 0.3).toFixed(4));
 
       await db
         .update(masterBahan)

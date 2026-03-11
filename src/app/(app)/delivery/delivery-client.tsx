@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Truck, Clock, CheckCircle2 } from "lucide-react";
 
 interface Delivery {
@@ -48,11 +49,44 @@ function getETA(delivery: Delivery): string {
 }
 
 export function DeliveryClient({ inTransit, pending, delivered, deliveries }: Props) {
+  const [deliveryList, setDeliveryList] = useState<Delivery[]>(deliveries);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [error, setError] = useState<string>("");
+
+  const counts = {
+    inTransit: deliveryList.filter(d => d.status === "sent").length,
+    pending: deliveryList.filter(d => d.status === "draft").length,
+    delivered: deliveryList.filter(d => d.status === "received").length,
+  };
+
   const statCards = [
-    { label: "In Transit", value: inTransit, icon: Truck, color: "hsl(var(--blue))", bg: "rgba(96,165,250,0.1)", sub: "PO dikirim" },
-    { label: "Pending", value: pending, icon: Clock, color: "hsl(var(--amber))", bg: "rgba(245,158,11,0.1)", sub: "PO belum dikirim" },
-    { label: "Delivered", value: delivered, icon: CheckCircle2, color: "hsl(var(--green))", bg: "rgba(34,197,94,0.1)", sub: "PO diterima" },
+    { label: "In Transit", value: counts.inTransit, icon: Truck, color: "hsl(var(--blue))", bg: "rgba(96,165,250,0.1)", sub: "PO dikirim" },
+    { label: "Pending", value: counts.pending, icon: Clock, color: "hsl(var(--amber))", bg: "rgba(245,158,11,0.1)", sub: "PO belum dikirim" },
+    { label: "Delivered", value: counts.delivered, icon: CheckCircle2, color: "hsl(var(--green))", bg: "rgba(34,197,94,0.1)", sub: "PO diterima" },
   ];
+
+  // suppress unused param warnings from initial props
+  void inTransit; void pending; void delivered;
+
+  async function handleAction(d: Delivery, action: "send" | "receive") {
+    setLoadingId(d.id);
+    setError("");
+    try {
+      const res = await fetch("/api/purchase-orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: d.id, action }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Gagal memperbarui PO");
+      const newStatus = action === "send" ? "sent" : "received";
+      setDeliveryList(prev => prev.map(item => item.id === d.id ? { ...item, status: newStatus } : item));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan");
+    } finally {
+      setLoadingId(null);
+    }
+  }
 
   return (
     <div style={{ color: "hsl(var(--text))" }}>
@@ -60,6 +94,13 @@ export function DeliveryClient({ inTransit, pending, delivered, deliveries }: Pr
         <h1 style={{ fontSize: "20px", fontWeight: 700 }}>Delivery Tracking</h1>
         <p style={{ fontSize: "13px", color: "hsl(var(--muted))", marginTop: "2px" }}>Monitor status pengiriman Purchase Order</p>
       </div>
+
+      {error && (
+        <div style={{ padding: "10px 14px", borderRadius: "8px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "hsl(var(--red))", fontSize: "13px", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>{error}</span>
+          <button onClick={() => setError("")} style={{ background: "transparent", border: "none", cursor: "pointer", color: "hsl(var(--red))" }}>×</button>
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "14px", marginBottom: "20px" }}>
@@ -93,10 +134,10 @@ export function DeliveryClient({ inTransit, pending, delivered, deliveries }: Pr
               </tr>
             </thead>
             <tbody>
-              {deliveries.length === 0 ? (
+              {deliveryList.length === 0 ? (
                 <tr><td colSpan={8} style={{ padding: "32px", textAlign: "center", color: "hsl(var(--muted))", fontSize: "13px" }}>Belum ada data pengiriman.</td></tr>
               ) : (
-                deliveries.map((d, idx) => {
+                deliveryList.map((d, idx) => {
                   const delNum = String(idx + 1).padStart(3, "0");
                   const statusColor = d.status === "received"
                     ? { color: "hsl(var(--green))", bg: "rgba(34,197,94,0.15)", label: "Delivered" }
@@ -128,16 +169,24 @@ export function DeliveryClient({ inTransit, pending, delivered, deliveries }: Pr
                       </td>
                       <td style={{ padding: "10px 12px" }}>
                         {d.status === "sent" && (
-                          <button style={{ fontSize: "11px", padding: "4px 10px", borderRadius: "6px", border: "none", cursor: "pointer", background: "rgba(96,165,250,0.15)", color: "hsl(var(--blue))", fontWeight: 600 }}>
-                            Konfirmasi Terima
+                          <button
+                            disabled={loadingId === d.id}
+                            onClick={() => handleAction(d, "receive")}
+                            style={{ fontSize: "11px", padding: "4px 10px", borderRadius: "6px", border: "none", cursor: "pointer", background: "rgba(96,165,250,0.15)", color: "hsl(var(--blue))", fontWeight: 600, opacity: loadingId === d.id ? 0.6 : 1 }}
+                          >
+                            {loadingId === d.id ? "..." : "Konfirmasi Terima"}
                           </button>
                         )}
                         {d.status === "received" && (
                           <span style={{ fontSize: "11px", color: "hsl(var(--green))", fontWeight: 600 }}>✓ Selesai</span>
                         )}
                         {d.status === "draft" && (
-                          <button style={{ fontSize: "11px", padding: "4px 10px", borderRadius: "6px", border: "none", cursor: "pointer", background: "rgba(96,165,250,0.15)", color: "hsl(var(--blue))", fontWeight: 600 }}>
-                            Kirim
+                          <button
+                            disabled={loadingId === d.id}
+                            onClick={() => handleAction(d, "send")}
+                            style={{ fontSize: "11px", padding: "4px 10px", borderRadius: "6px", border: "none", cursor: "pointer", background: "rgba(245,158,11,0.15)", color: "hsl(var(--amber))", fontWeight: 600, opacity: loadingId === d.id ? 0.6 : 1 }}
+                          >
+                            {loadingId === d.id ? "..." : "Kirim"}
                           </button>
                         )}
                       </td>

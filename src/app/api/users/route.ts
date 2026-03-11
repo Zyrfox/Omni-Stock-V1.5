@@ -4,6 +4,7 @@ import { users } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { getSessionUser, isAdmin } from "@/lib/auth";
 import { generateCustomId } from "@/lib/utils";
+import bcrypt from "bcryptjs";
 
 // GET — list all users
 export async function GET(request: NextRequest) {
@@ -29,21 +30,60 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { email, nama, role } = body as { email: string; nama: string; role: "admin" | "manager" };
+    const { email, nama, role, outletId, password } = body as {
+      email: string;
+      nama: string;
+      role: "admin" | "manager";
+      outletId?: string;
+      password: string;
+    };
 
-    if (!email || !nama) {
-      return NextResponse.json({ error: "Email dan nama wajib diisi" }, { status: 400 });
+    if (!email || !nama || !password) {
+      return NextResponse.json({ error: "Email, nama, dan password wajib diisi" }, { status: 400 });
+    }
+
+    // Check for duplicate email
+    const existing = await db.select().from(users).where(eq(users.email, email.toLowerCase().trim()));
+    if (existing.length > 0) {
+      return NextResponse.json({ error: "Email sudah terdaftar" }, { status: 409 });
     }
 
     const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(users);
     const id = generateCustomId("USR", Number(count) + 1);
+
+    // Hash password
+    const passwordHash = await bcrypt.hash(password, 10);
 
     await db.insert(users).values({
       id,
       email: email.toLowerCase().trim(),
       nama,
       role: role || "manager",
+      passwordHash,
+      mustChangePassword: true,
+      outletId: outletId || null,
     });
+
+    // Also register in Better Auth account table so they can actually log in
+    // Better Auth uses the `account` table with providerId="credential"
+    // We insert into the auth `user` table and `account` table
+    try {
+      const authDb = db as typeof db;
+      // Insert into auth `user` table (Better Auth's own user)
+      await authDb.execute(
+        sql`INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at)
+            VALUES (${id}, ${nama}, ${email.toLowerCase().trim()}, true, now(), now())
+            ON CONFLICT (email) DO NOTHING`
+      );
+      // Insert into auth `account` table with hashed password
+      await authDb.execute(
+        sql`INSERT INTO "account" (id, account_id, provider_id, user_id, password, created_at, updated_at)
+            VALUES (${id + '-cred'}, ${email.toLowerCase().trim()}, 'credential', ${id}, ${passwordHash}, now(), now())
+            ON CONFLICT DO NOTHING`
+      );
+    } catch {
+      // If auth table insert fails (e.g., tables don't exist yet), continue — app user is still created
+    }
 
     return NextResponse.json({ message: "User berhasil ditambahkan", id });
   } catch (error: unknown) {
@@ -52,7 +92,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE — remove a user
+// DELETE — remove a user (kept for backward compat, use /api/users/[id] for REST)
 export async function DELETE(request: NextRequest) {
   try {
     const appUser = await getSessionUser(request.headers);

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Shield, Database, Key, Info, CheckCircle2, AlertCircle, Lock, ArrowRight } from "lucide-react";
 
 interface Props {
@@ -28,7 +29,30 @@ function InfoRow({ label, value, accent }: { label: string; value: string; accen
   );
 }
 
-export function SettingsClient({ isMigrationDone }: Props) {
+export function SettingsClient({ isMigrationDone: initialMigrationDone }: Props) {
+  const [isMigrationDone, setIsMigrationDone] = useState(initialMigrationDone);
+  const [migrating, setMigrating] = useState(false);
+  const [migrationResult, setMigrationResult] = useState<string | null>(null);
+  const [migrationError, setMigrationError] = useState<string | null>(null);
+
+  const handleMigration = async () => {
+    if (isMigrationDone || migrating) return;
+    setMigrating(true);
+    setMigrationResult(null);
+    setMigrationError(null);
+    try {
+      const res = await fetch("/api/migration", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Migration gagal");
+      setIsMigrationDone(true);
+      setMigrationResult(data.message);
+    } catch (e: any) {
+      setMigrationError(e.message);
+    } finally {
+      setMigrating(false);
+    }
+  };
+
   return (
     <div style={{ color: "hsl(var(--text))" }}>
       <div style={{ marginBottom: "24px" }}>
@@ -61,7 +85,7 @@ export function SettingsClient({ isMigrationDone }: Props) {
               : <AlertCircle style={{ width: 16, height: 16, color: "hsl(var(--amber))" }} />}
             <div>
               <p style={{ fontSize: "12px", fontWeight: 700, color: isMigrationDone ? "hsl(var(--green))" : "hsl(var(--amber))" }}>
-                {isMigrationDone ? "Migrasi Selesai" : "Migrasi Diperlukan"}
+                {isMigrationDone ? "✅ Migration Complete" : "⚠ Ready to Migrate"}
               </p>
               <p style={{ fontSize: "11px", color: "hsl(var(--muted))", marginTop: "2px" }}>
                 {isMigrationDone ? "Data telah dimigrasikan ke Supabase" : "Sinkronisasi awal belum dilakukan"}
@@ -69,8 +93,19 @@ export function SettingsClient({ isMigrationDone }: Props) {
             </div>
           </div>
 
+          {migrationResult && (
+            <div style={{ padding: "8px 12px", borderRadius: "6px", background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", marginBottom: "12px", fontSize: "12px", color: "hsl(var(--green))" }}>
+              ✓ {migrationResult}
+            </div>
+          )}
+          {migrationError && (
+            <div style={{ padding: "8px 12px", borderRadius: "6px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", marginBottom: "12px", fontSize: "12px", color: "hsl(var(--red))" }}>
+              ⚠ {migrationError}
+            </div>
+          )}
+
           <p style={{ fontSize: "12px", color: "hsl(var(--muted))", marginBottom: "16px", lineHeight: 1.6 }}>
-            Proses migrasi satu arah dari sistem lama ke Supabase PostgreSQL. Setelah selesai, proses tidak dapat dibalik.
+            Proses migrasi satu arah dari Google Sheets ke Supabase PostgreSQL. Setelah selesai, tombol terkunci permanen.
           </p>
 
           <button
@@ -78,17 +113,23 @@ export function SettingsClient({ isMigrationDone }: Props) {
               width: "100%", padding: "10px", borderRadius: "8px", border: "none",
               background: isMigrationDone
                 ? "rgba(107,114,128,0.15)"
-                : "linear-gradient(135deg, #C8F135, #86EF3C)",
-              color: isMigrationDone ? "hsl(var(--muted))" : "#0A0A0F",
-              fontWeight: 800, cursor: isMigrationDone ? "not-allowed" : "pointer",
+                : migrating ? "rgba(200,241,53,0.3)" : "linear-gradient(135deg, #C8F135, #86EF3C)",
+              color: isMigrationDone ? "hsl(var(--muted))" : migrating ? "hsl(var(--accent))" : "#0A0A0F",
+              fontWeight: 800, cursor: isMigrationDone || migrating ? "not-allowed" : "pointer",
               fontSize: "13px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+              opacity: isMigrationDone ? 0.7 : 1,
             }}
-            disabled={isMigrationDone}
-            onClick={() => !isMigrationDone && alert("Jalankan migrasi — connect to server action")}
+            disabled={isMigrationDone || migrating}
+            onClick={handleMigration}
           >
             {isMigrationDone
-              ? <><Lock style={{ width: 14, height: 14 }} /> Terkunci — Sudah Selesai</>
-              : <><ArrowRight style={{ width: 14, height: 14 }} /> Mulai Sinkronisasi</>}
+              ? <><Lock style={{ width: 14, height: 14 }} /> ✓ Migration Complete (Locked)</>
+              : migrating
+                ? <>
+                    <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    Migrating...
+                  </>
+                : <><ArrowRight style={{ width: 14, height: 14 }} /> 🔄 Sync from Google Sheets</>}
           </button>
         </div>
 
@@ -102,7 +143,7 @@ export function SettingsClient({ isMigrationDone }: Props) {
           <div style={{ padding: "10px 14px", borderRadius: "8px", marginBottom: "16px", background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)", display: "flex", alignItems: "center", gap: "8px" }}>
             <CheckCircle2 style={{ width: 16, height: 16, color: "hsl(var(--green))" }} />
             <div>
-              <p style={{ fontSize: "12px", fontWeight: 700, color: "hsl(var(--green))" }}>PITR Active</p>
+              <p style={{ fontSize: "12px", fontWeight: 700, color: "hsl(var(--green))" }}>● PITR Active</p>
               <p style={{ fontSize: "11px", color: "hsl(var(--muted))", marginTop: "2px" }}>Point-in-Time Recovery diaktifkan</p>
             </div>
           </div>
@@ -116,7 +157,7 @@ export function SettingsClient({ isMigrationDone }: Props) {
           </div>
         </div>
 
-        {/* Card 3: Auth */}
+        {/* Card 3: Auth (Better Auth) */}
         <div style={card}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
             <Key style={{ width: 18, height: 18, color: "hsl(var(--blue))" }} />
@@ -125,9 +166,9 @@ export function SettingsClient({ isMigrationDone }: Props) {
 
           <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
             <InfoRow label="Provider" value="Email + Password" />
-            <InfoRow label="Library" value="better-auth ^1.2.0" />
+            <InfoRow label="Library" value="better-auth" />
             <InfoRow label="Session Duration" value="7 hari JWT" />
-            <InfoRow label="Domain" value="*.easy-going.com" />
+            <InfoRow label="Allowed Domain" value="*.easy-going.com" />
             <InfoRow label="Google OAuth" value="Opsional (env)" />
             <InfoRow label="Email Verification" value="Tidak Diperlukan" />
           </div>
@@ -154,3 +195,4 @@ export function SettingsClient({ isMigrationDone }: Props) {
     </div>
   );
 }
+

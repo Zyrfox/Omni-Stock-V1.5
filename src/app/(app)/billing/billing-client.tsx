@@ -38,22 +38,33 @@ const card = {
 } as const;
 
 export function BillingClient({ totalPO, outstandingCount, outstandingTotal, lunasCount, lunasTotal, bulanIniTotal, invoices }: Props) {
+  const [invoiceList, setInvoiceList] = useState<Invoice[]>(invoices);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [error, setError] = useState<string>("");
+
+  const currentOutstanding = invoiceList.filter(i => i.status !== "received").length;
+  const currentOutstandingTotal = invoiceList.filter(i => i.status !== "received").reduce((s, i) => s + i.totalHarga, 0);
+  const currentLunas = invoiceList.filter(i => i.status === "received").length;
+  const currentLunasTotal = invoiceList.filter(i => i.status === "received").reduce((s, i) => s + i.totalHarga, 0);
+
+  // suppress unused prop warnings
+  void totalPO; void outstandingCount; void outstandingTotal; void lunasCount; void lunasTotal; void bulanIniTotal;
 
   const statCards = [
     {
-      label: "Total Invoice", value: totalPO, icon: FileText,
+      label: "Total Invoice", value: invoiceList.length, icon: FileText,
       color: "hsl(var(--blue))", bg: "rgba(96,165,250,0.1)", sub: "Semua PO",
     },
     {
-      label: "Outstanding", value: outstandingCount, icon: Clock,
+      label: "Outstanding", value: currentOutstanding, icon: Clock,
       color: "hsl(var(--amber))", bg: "rgba(245,158,11,0.1)",
-      sub: fmt(outstandingTotal),
+      sub: fmt(currentOutstandingTotal),
     },
     {
-      label: "Lunas", value: lunasCount, icon: CheckCircle2,
+      label: "Lunas", value: currentLunas, icon: CheckCircle2,
       color: "hsl(var(--green))", bg: "rgba(34,197,94,0.1)",
-      sub: fmt(lunasTotal),
+      sub: fmt(currentLunasTotal),
     },
     {
       label: "Bulan Ini", value: fmt(bulanIniTotal), icon: DollarSign,
@@ -61,12 +72,40 @@ export function BillingClient({ totalPO, outstandingCount, outstandingTotal, lun
     },
   ];
 
+  async function handleTandaiLunas(inv: Invoice) {
+    setLoadingId(inv.id);
+    setError("");
+    try {
+      const res = await fetch("/api/purchase-orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: inv.id, action: "receive" }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Gagal memperbarui invoice");
+      const updated = { ...inv, status: "received" };
+      setInvoiceList(prev => prev.map(i => i.id === inv.id ? updated : i));
+      if (selectedInvoice?.id === inv.id) setSelectedInvoice(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan");
+    } finally {
+      setLoadingId(null);
+    }
+  }
+
   return (
     <div style={{ color: "hsl(var(--text))" }}>
       <div style={{ marginBottom: "24px" }}>
         <h1 style={{ fontSize: "20px", fontWeight: 700 }}>Billing & Invoicing</h1>
         <p style={{ fontSize: "13px", color: "hsl(var(--muted))", marginTop: "2px" }}>Kelola invoice dan status pembayaran PO</p>
       </div>
+
+      {error && (
+        <div style={{ padding: "10px 14px", borderRadius: "8px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "hsl(var(--red))", fontSize: "13px", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>{error}</span>
+          <button onClick={() => setError("")} style={{ background: "transparent", border: "none", cursor: "pointer", color: "hsl(var(--red))" }}>×</button>
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px", marginBottom: "20px" }}>
@@ -100,10 +139,10 @@ export function BillingClient({ totalPO, outstandingCount, outstandingTotal, lun
               </tr>
             </thead>
             <tbody>
-              {invoices.length === 0 ? (
+              {invoiceList.length === 0 ? (
                 <tr><td colSpan={7} style={{ padding: "32px", textAlign: "center", color: "hsl(var(--muted))", fontSize: "13px" }}>Belum ada invoice.</td></tr>
               ) : (
-                invoices.map((inv) => (
+                invoiceList.map((inv) => (
                   <tr
                     key={inv.id}
                     style={{ borderTop: "1px solid hsl(var(--border))", cursor: "pointer" }}
@@ -114,7 +153,7 @@ export function BillingClient({ totalPO, outstandingCount, outstandingTotal, lun
                     <td style={{ padding: "10px 12px", fontFamily: "monospace", fontSize: "12px", color: "hsl(var(--accent))", fontWeight: 700 }}>{inv.id}</td>
                     <td style={{ padding: "10px 12px", fontSize: "12px", color: "hsl(var(--muted))" }}>{fmtDate(inv.createdAt)}</td>
                     <td style={{ padding: "10px 12px", fontSize: "13px", fontWeight: 600 }}>{inv.namaVendor}</td>
-                    <td style={{ padding: "10px 12px", fontSize: "12px" }}>1</td>
+                    <td style={{ padding: "10px 12px", fontSize: "12px" }}>{inv.namaBahan}</td>
                     <td style={{ padding: "10px 12px", fontSize: "13px", fontWeight: 700, color: "hsl(var(--red))" }}>{fmt(inv.totalHarga)}</td>
                     <td style={{ padding: "10px 12px" }}>
                       {inv.status === "received" ? (
@@ -123,7 +162,7 @@ export function BillingClient({ totalPO, outstandingCount, outstandingTotal, lun
                         </span>
                       ) : (
                         <span style={{ fontSize: "10px", fontWeight: 700, padding: "2px 7px", borderRadius: "4px", background: "rgba(245,158,11,0.15)", color: "hsl(var(--amber))" }}>
-                          ⏳ UNPAID
+                          UNPAID
                         </span>
                       )}
                     </td>
@@ -140,10 +179,11 @@ export function BillingClient({ totalPO, outstandingCount, outstandingTotal, lun
                         </button>
                         {inv.status !== "received" && (
                           <button
-                            style={{ fontSize: "11px", padding: "4px 10px", borderRadius: "6px", border: "none", cursor: "pointer", background: "linear-gradient(135deg, #C8F135, #86EF3C)", color: "#0A0A0F", fontWeight: 800 }}
-                            onClick={(e) => { e.stopPropagation(); alert(`Tandai ${inv.id} sebagai lunas`); }}
+                            disabled={loadingId === inv.id}
+                            style={{ fontSize: "11px", padding: "4px 10px", borderRadius: "6px", border: "none", cursor: "pointer", background: "linear-gradient(135deg, #C8F135, #86EF3C)", color: "#0A0A0F", fontWeight: 800, opacity: loadingId === inv.id ? 0.6 : 1 }}
+                            onClick={() => handleTandaiLunas(inv)}
                           >
-                            Tandai Lunas
+                            {loadingId === inv.id ? "..." : "Tandai Lunas"}
                           </button>
                         )}
                       </div>
@@ -173,7 +213,7 @@ export function BillingClient({ totalPO, outstandingCount, outstandingTotal, lun
                 { label: "Qty Order", value: String(selectedInvoice.qtyOrder) },
                 { label: "Total Harga", value: fmt(selectedInvoice.totalHarga) },
                 { label: "Tanggal", value: fmtDate(selectedInvoice.createdAt) },
-                { label: "Status", value: selectedInvoice.status.toUpperCase() },
+                { label: "Status", value: selectedInvoice.status === "received" ? "LUNAS" : "UNPAID" },
               ].map((row) => (
                 <div key={row.label} style={{ display: "flex", justifyContent: "space-between", paddingBottom: "10px", borderBottom: "1px solid hsl(var(--border))" }}>
                   <span style={{ fontSize: "12px", color: "hsl(var(--muted))" }}>{row.label}</span>
@@ -181,7 +221,16 @@ export function BillingClient({ totalPO, outstandingCount, outstandingTotal, lun
                 </div>
               ))}
             </div>
-            <div style={{ marginTop: "20px", display: "flex", justifyContent: "flex-end" }}>
+            <div style={{ marginTop: "20px", display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+              {selectedInvoice.status !== "received" && (
+                <button
+                  disabled={loadingId === selectedInvoice.id}
+                  style={{ padding: "8px 20px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #C8F135, #86EF3C)", color: "#0A0A0F", fontWeight: 800, cursor: "pointer", fontSize: "13px", opacity: loadingId === selectedInvoice.id ? 0.6 : 1 }}
+                  onClick={() => handleTandaiLunas(selectedInvoice)}
+                >
+                  {loadingId === selectedInvoice.id ? "Memproses..." : "Tandai Lunas"}
+                </button>
+              )}
               <button style={{ padding: "8px 20px", borderRadius: "8px", border: "1px solid hsl(var(--border2))", background: "transparent", color: "hsl(var(--muted))", cursor: "pointer", fontSize: "13px" }} onClick={() => setSelectedInvoice(null)}>
                 Tutup
               </button>

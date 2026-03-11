@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
-import * as XLSX from "xlsx";
+import { useState, useCallback } from "react";
 import {
   Package, ShoppingCart, Store, AlertTriangle, Upload, TrendingUp,
   Brain, FileText, AlertCircle, XCircle
@@ -106,38 +105,43 @@ export function DashboardClient({ stats, recentPOs, bahanList }: Props) {
     }
   }, []);
 
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<string | null>(null);
+  const [creatingPO, setCreatingPO] = useState(false);
+
   const processUpload = async () => {
     if (!uploadFile) return;
+    setUploading(true);
+    setUploadResult(null);
     try {
-      const data = await uploadFile.arrayBuffer();
-      const workbook = XLSX.read(data, { type: "array" });
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<any>(firstSheet);
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+      formData.append("outlet_id", "OUT-001");
 
-      // Basic heuristic: find item names and stock
-      let parsed = 0;
-      const newStocks: Record<string, number> = { ...transientStocks };
+      const res = await fetch("/api/upload-excel", {
+        method: "POST",
+        body: formData,
+      });
 
-      for (const row of rows) {
-        // Fallback checks for common Pawoon headers like "Nama Bahan", "Stok Akhir"
-        const keys = Object.keys(row);
-        const nameKey = keys.find(k => k.toLowerCase().includes("nama") || k.toLowerCase().includes("bahan") || k.toLowerCase().includes("item"));
-        const stockKey = keys.find(k => k.toLowerCase().includes("akhir") || k.toLowerCase().includes("stok"));
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload gagal");
 
-        if (nameKey && stockKey) {
-          const matchedItem = bahanList.find(b => b.namaBahan.toLowerCase() === String(row[nameKey]).toLowerCase());
-          if (matchedItem) {
-            newStocks[matchedItem.id] = Number(row[stockKey]) || 0;
-            parsed++;
-          }
+      // Update transient stocks from API response
+      if (data.data && Array.isArray(data.data)) {
+        const newStocks: Record<string, number> = {};
+        for (const item of data.data) {
+          newStocks[item.id] = item.stokAkhir;
         }
+        setTransientStocks(newStocks);
       }
 
-      setTransientStocks(newStocks);
-      alert(`Berhasil memproses ${parsed} item dari kartu stok.`);
-    } catch (e) {
-      alert("Error parsing Excel file.");
-      console.error(e);
+      setUploadResult(data.message);
+      setUploadFile(null);
+      setUploadMsg("");
+    } catch (e: any) {
+      setUploadResult(`Error: ${e.message}`);
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -163,6 +167,12 @@ export function DashboardClient({ stats, recentPOs, bahanList }: Props) {
     });
   };
 
+  // Compute stock stats from transient data
+  const hasUploadData = Object.keys(transientStocks).length > 0;
+  const safeCount = hasUploadData ? bahanList.filter(b => calculateStatus(b) === "SAFE").length : 0;
+  const warningCount = hasUploadData ? bahanList.filter(b => calculateStatus(b) === "WARNING").length : 0;
+  const criticalCount = hasUploadData ? bahanList.filter(b => calculateStatus(b) === "CRITICAL").length : 0;
+
   const statCards = [
     {
       label: "Total Products",
@@ -174,27 +184,27 @@ export function DashboardClient({ stats, recentPOs, bahanList }: Props) {
     },
     {
       label: "Available Stock",
-      value: "—",
+      value: hasUploadData ? safeCount : "—",
       icon: Store,
       color: "hsl(var(--green))",
       bg: "rgba(34,197,94,0.1)",
-      sub: "Upload Pawoon data",
+      sub: hasUploadData ? `${safeCount} item aman` : "Upload Pawoon data",
     },
     {
       label: "Warning + Critical",
-      value: "—",
+      value: hasUploadData ? warningCount + criticalCount : "—",
       icon: AlertTriangle,
       color: "hsl(var(--amber))",
       bg: "rgba(245,158,11,0.1)",
-      sub: "No upload session",
+      sub: hasUploadData ? `${warningCount} warning, ${criticalCount} critical` : "No upload session",
     },
     {
       label: "Out of Stock",
-      value: "—",
+      value: hasUploadData ? criticalCount : "—",
       icon: XCircle,
       color: "hsl(var(--red))",
       bg: "rgba(239,68,68,0.1)",
-      sub: "No upload session",
+      sub: hasUploadData ? `${criticalCount} perlu restock` : "No upload session",
     },
   ];
 
@@ -254,26 +264,50 @@ export function DashboardClient({ stats, recentPOs, bahanList }: Props) {
           )}
           {uploadFile && (
             <button
+              disabled={uploading}
               style={{
                 marginTop: "12px",
-                background: "linear-gradient(135deg, #C8F135, #86EF3C)",
-                color: "#0A0A0F",
+                background: uploading ? "rgba(200,241,53,0.3)" : "linear-gradient(135deg, #C8F135, #86EF3C)",
+                color: uploading ? "hsl(var(--accent))" : "#0A0A0F",
                 fontWeight: 800,
                 borderRadius: "8px",
                 padding: "8px 20px",
                 border: "none",
-                cursor: "pointer",
+                cursor: uploading ? "not-allowed" : "pointer",
                 fontSize: "13px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                margin: "12px auto 0",
               }}
               onClick={processUpload}
             >
-              Process Upload
+              {uploading ? (
+                <>
+                  <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  Processing...
+                </>
+              ) : (
+                "⚡ Process Upload"
+              )}
             </button>
           )}
         </div>
         <p style={{ fontSize: "11px", color: "hsl(var(--muted))", marginTop: "8px" }}>
           Data stok bersifat transient — stok aktual hanya tersedia setelah upload Pawoon berhasil diproses.
         </p>
+        {uploadResult && (
+          <div style={{
+            marginTop: "10px", padding: "10px 14px", borderRadius: "8px",
+            background: uploadResult.startsWith("Error") ? "rgba(239,68,68,0.08)" : "rgba(34,197,94,0.08)",
+            border: `1px solid ${uploadResult.startsWith("Error") ? "rgba(239,68,68,0.25)" : "rgba(34,197,94,0.25)"}`,
+            fontSize: "12px",
+            color: uploadResult.startsWith("Error") ? "hsl(var(--red))" : "hsl(var(--green))",
+            fontWeight: 600,
+          }}>
+            {uploadResult.startsWith("Error") ? "⚠ " : "✓ "}{uploadResult}
+          </div>
+        )}
       </div>
 
       {/* Stat Cards */}
@@ -588,13 +622,43 @@ export function DashboardClient({ stats, recentPOs, bahanList }: Props) {
 
           {cart.length > 0 && (
             <button
+              disabled={creatingPO}
               style={{
                 width: "100%", marginTop: "16px",
-                background: "linear-gradient(135deg, #C8F135, #86EF3C)", color: "#0A0A0F",
-                fontWeight: 800, padding: "12px", borderRadius: "8px", border: "none", cursor: "pointer", fontSize: "13px"
+                background: creatingPO ? "rgba(107,114,128,0.3)" : "linear-gradient(135deg, #C8F135, #86EF3C)",
+                color: creatingPO ? "hsl(var(--muted))" : "#0A0A0F",
+                fontWeight: 800, padding: "12px", borderRadius: "8px", border: "none",
+                cursor: creatingPO ? "not-allowed" : "pointer", fontSize: "13px"
+              }}
+              onClick={async () => {
+                setCreatingPO(true);
+                try {
+                  let created = 0;
+                  for (const c of cart) {
+                    const b = bahanList.find(x => x.id === c.bahanId);
+                    const res = await fetch("/api/purchase-orders", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        outletId: b?.outletId || "OUT-001",
+                        vendorId: "VND-001",
+                        bahanId: c.bahanId,
+                        qtyOrder: c.qty,
+                        hargaSatuan: b?.hargaBeli || 0,
+                      }),
+                    });
+                    if (res.ok) created++;
+                  }
+                  alert(`${created} Draft PO berhasil dibuat!`);
+                  setCart([]);
+                } catch {
+                  alert("Gagal membuat PO. Coba lagi.");
+                } finally {
+                  setCreatingPO(false);
+                }
               }}
             >
-              + Buat {cart.length} Draft PO
+              {creatingPO ? "Membuat PO..." : `+ Buat ${cart.length} Draft PO`}
             </button>
           )}
         </div>
