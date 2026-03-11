@@ -35,8 +35,11 @@ export const auth = betterAuth({
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://192.168.1.5:3000",
-    process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-  ].filter(Boolean),
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.BETTER_AUTH_URL,
+    // Extra origins from env (comma-separated), e.g. for Vercel preview URLs
+    ...(process.env.BETTER_AUTH_TRUSTED_ORIGINS || "").split(",").map(s => s.trim()),
+  ].filter(Boolean) as string[],
 });
 
 /** Check if an email is registered in the users table and return the user record */
