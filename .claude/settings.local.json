@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Easy Going Group/inventory/OMNI_STOCK V 1.5/omni-stock/**)",
+      "Bash(rm -f src/app/dashboard/layout.tsx src/app/dashboard/page.tsx)",
+      "Bash(rm -rf src/app/dashboard/materials src/app/dashboard/recipes src/app/dashboard/purchase-orders src/app/dashboard/vendors src/app/dashboard/settings src/app/dashboard/upload src/app/dashboard/users src/app/dashboard/ai-consultant)",
+      "Bash(find \"/c/Easy Going Group/inventory/OMNI_STOCK V 1.5/omni-stock/src/app/\\(app\\)\" -type f | sort)"
+    ]
+  }
+}

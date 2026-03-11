@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
           satuanBeli: row[4] || "kg",
           isiSatuan: parseFloat(row[5]) || 1,
           satuanDapur: row[6] || "kg",
-          stokSaatIni: parseFloat(row[7]) || 0,
+          // row[7] was stok_saat_ini — now transient, skip
           stokMinimum: parseInt(row[8]) || 0,
           leadTimeDays: parseInt(row[9]) || 1,
           avgDailyConsumption: parseFloat(row[10]) || 0,

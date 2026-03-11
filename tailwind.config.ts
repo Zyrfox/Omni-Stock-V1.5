@@ -10,39 +10,46 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-dm-sans)", "Arial", "sans-serif"],
+      },
       colors: {
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
+        // --- PRD Color Tokens ---
+        bg: "#0A0A0F",
+        surface: "#0F0F18",
+        card: "#13131F",
+        border: "#1E1E2E",
+        border2: "#2D2D44",
+        muted: "#4B5563",
+        sub: "#6B7280",
+        text: "#E2E8F0",
+        accent: "#C8F135",
+        accentD: "#86EF3C",
+        red: "#EF4444",
+        amber: "#F59E0B",
+        green: "#22C55E",
+        blue: "#60A5FA",
+
+        // --- Shadcn UI Compatibility ---
+        input: "#2D2D44",
+        ring: "#C8F135",
+        background: "#0A0A0F",
+        foreground: "#E2E8F0",
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+          DEFAULT: "#C8F135",
+          foreground: "#0A0A0F",
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
+          DEFAULT: "#0F0F18",
+          foreground: "#E2E8F0",
         },
         destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
-        },
-        muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
-        },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+          DEFAULT: "#EF4444",
+          foreground: "#E2E8F0",
         },
         popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
-        },
-        card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+          DEFAULT: "#0F0F18",
+          foreground: "#E2E8F0",
         },
         chart: {
           "1": "hsl(var(--chart-1))",

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { purchaseOrders, masterBahan, masterVendor } from "@/lib/db/schema";
+import { purchaseOrders, masterVendor } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { getSessionUser } from "@/lib/auth";
 import { generateCustomId } from "@/lib/utils";
@@ -113,15 +113,8 @@ export async function PATCH(request: NextRequest) {
         tanggalTerima: new Date(),
       }).where(eq(purchaseOrders.id, id));
 
-      // Update stock: add qty to master_bahan
-      const [bahan] = await db.select().from(masterBahan).where(eq(masterBahan.id, po.bahanId));
-      if (bahan) {
-        await db.update(masterBahan).set({
-          stokSaatIni: bahan.stokSaatIni + po.qtyOrder,
-        }).where(eq(masterBahan.id, po.bahanId));
-      }
-
-      return NextResponse.json({ message: "PO diterima, stok terupdate" });
+      // Note: stock is transient (no stok_saat_ini in DB) — tracked via Pawoon upload sessions
+      return NextResponse.json({ message: "PO diterima dan dicatat" });
     }
 
     return NextResponse.json({ error: "Action tidak valid" }, { status: 400 });

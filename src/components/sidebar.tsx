@@ -115,8 +115,7 @@ export function Sidebar({ userRole = "manager", isCollapsed = false, onToggle }:
               )}
               style={{
                 color: isActive ? "hsl(var(--accent))" : "hsl(var(--muted))",
-                backgroundColor: isActive ? "hsl(var(--accent))" : "transparent",
-                opacity: isActive ? 0.1 : 1,
+                backgroundColor: isActive ? "rgba(200,241,53,0.12)" : "transparent",
               }}
               title={isCollapsed ? item.label : undefined}
             >

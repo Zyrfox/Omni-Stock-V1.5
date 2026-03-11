@@ -102,12 +102,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Deduct stock and update avg_daily_consumption (auto mode)
+    // Update avg_daily_consumption (auto mode) — stok is transient, NOT stored in DB
     for (const [bahanId, totalUsed] of consumptionMap.entries()) {
       const bahan = allBahan.find((b) => b.id === bahanId);
       if (!bahan) continue;
 
-      const newStok = Math.max(0, bahan.stokSaatIni - totalUsed);
       // Simple moving average: blend old avg with new data point
       const newAvg = bahan.avgConsumptionSource === "manual"
         ? bahan.avgDailyConsumption
@@ -116,7 +115,6 @@ export async function POST(request: NextRequest) {
       await db
         .update(masterBahan)
         .set({
-          stokSaatIni: newStok,
           avgDailyConsumption: newAvg,
           avgConsumptionSource: "auto",
         })
@@ -125,13 +123,16 @@ export async function POST(request: NextRequest) {
 
     // Build results for response
     const updatedBahan = await db.select().from(masterBahan);
+    // Stock is transient — derive consumed stock from consumptionMap for this upload session only
     for (const bahan of updatedBahan) {
-      const status = getStockStatus(bahan.stokSaatIni, bahan.stokMinimum, bahan.leadTimeDays, bahan.avgDailyConsumption);
-      const daysUntilStockout = estimateDaysUntilStockout(bahan.stokSaatIni, bahan.avgDailyConsumption);
+      const consumed = consumptionMap.get(bahan.id) ?? 0;
+      // stokAkhir in response represents net consumption this session (not persistent DB stock)
+      const status = getStockStatus(0, bahan.stokMinimum, bahan.leadTimeDays, bahan.avgDailyConsumption);
+      const daysUntilStockout = estimateDaysUntilStockout(0, bahan.avgDailyConsumption);
       results.push({
         id: bahan.id,
         namaBahan: bahan.namaBahan,
-        stokAkhir: bahan.stokSaatIni,
+        stokAkhir: consumed,
         stokMinimum: bahan.stokMinimum,
         leadTimeDays: bahan.leadTimeDays,
         avgDailyConsumption: bahan.avgDailyConsumption,

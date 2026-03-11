@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { signIn } from "@/lib/auth-client";
 
 type RoleTab = "STAFF" | "SPV" | "MANAGER";
 
@@ -20,12 +21,8 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // TODO: Implement Better Auth login
-      // const response = await signIn.email({ email, password });
-      // if (response.error) throw new Error(response.error);
-      
-      // Temporary: simulate login
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const response = await signIn.email({ email, password });
+      if (response.error) throw new Error(response.error.message || "Login gagal");
       router.push("/dashboard");
     } catch (err: any) {
       setError(err.message || "Login gagal. Periksa email dan password Anda.");

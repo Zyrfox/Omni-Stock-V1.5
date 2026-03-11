@@ -38,13 +38,13 @@
     --ring: var(--accent);
     --radius: 0.75rem;
   }
-}
 
-@layer base {
   * {
-    @apply border-border;
+    border-color: hsl(var(--border));
   }
+  
   body {
-    @apply bg-background text-foreground;
+    background-color: hsl(var(--bg));
+    color: hsl(var(--text));
   }
 }

@@ -1,12 +1,13 @@
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "./schema";
 import "dotenv/config";
+import { auth } from "../auth";
 
 // Use pooler connection for runtime/seed (port 6543)
 const connectionUrl = process.env.DATABASE_URL_POOLER || process.env.DATABASE_URL!;
-const sql = neon(connectionUrl);
-const db = drizzle(sql, { schema });
+const client = postgres(connectionUrl, { ssl: "require", max: 1 });
+const db = drizzle(client, { schema });
 
 async function seed() {
   console.log("Seeding database...");
@@ -16,28 +17,45 @@ async function seed() {
     .values({ key: "is_initial_migration_done", value: "false" })
     .onConflictDoNothing();
 
-  // 2. users — seed admin user first
-  // Password: "admin123" (bcrypt hash)
-  const bcrypt = require('bcryptjs');
-  const adminPasswordHash = await bcrypt.hash("admin123", 10);
-  const managerPasswordHash = await bcrypt.hash("manager123", 10);
-  
+  // 2. outlets (must come before users due to FK)
+  const seedOutlets = [
+    { id: "OUT-001", namaOutlet: "Outlet Pusat" },
+    { id: "OUT-002", namaOutlet: "Outlet Cabang 1" },
+    { id: "OUT-003", namaOutlet: "Outlet Cabang 2" },
+  ];
+  for (const o of seedOutlets) {
+    await db.insert(schema.outlets).values(o).onConflictDoNothing();
+  }
+
+  // 3. users — seed via Better Auth API so credentials exist in auth tables
+  const authUsers = [
+    { email: "admin@easygoing.com", password: "admin123", name: "Admin Utama" },
+    { email: "manager@easygoing.com", password: "manager123", name: "Manager Outlet" },
+  ];
+  for (const u of authUsers) {
+    try {
+      await auth.api.signUpEmail({ body: { email: u.email, password: u.password, name: u.name } });
+      console.log(`   ✓ Auth user created: ${u.email}`);
+    } catch {
+      console.log(`   - Auth user already exists or failed: ${u.email}`);
+    }
+  }
+
+  // Also ensure app-level user records exist (role, outlet, etc.)
   const seedUsers = [
-    { 
-      id: "USR-001", 
-      email: "admin@easygoing.com", 
-      nama: "Admin Utama", 
+    {
+      id: "USR-001",
+      email: "admin@easygoing.com",
+      nama: "Admin Utama",
       role: "admin" as const,
-      passwordHash: adminPasswordHash,
-      mustChangePassword: false, // First admin doesn't need to change
-      outletId: null, // Admin has access to all outlets
+      mustChangePassword: false,
+      outletId: null,
     },
-    { 
-      id: "USR-002", 
-      email: "manager@easygoing.com", 
-      nama: "Manager Outlet", 
+    {
+      id: "USR-002",
+      email: "manager@easygoing.com",
+      nama: "Manager Outlet",
       role: "manager" as const,
-      passwordHash: managerPasswordHash,
       mustChangePassword: true,
       outletId: "OUT-001",
     },
@@ -52,16 +70,6 @@ async function seed() {
   console.log("\n🔐 MANAGER CREDENTIALS:");
   console.log("   Email: manager@easygoing.com");
   console.log("   Password: manager123\n");
-
-  // 3. outlets
-  const seedOutlets = [
-    { id: "OUT-001", namaOutlet: "Outlet Pusat" },
-    { id: "OUT-002", namaOutlet: "Outlet Cabang 1" },
-    { id: "OUT-003", namaOutlet: "Outlet Cabang 2" },
-  ];
-  for (const o of seedOutlets) {
-    await db.insert(schema.outlets).values(o).onConflictDoNothing();
-  }
 
   // 4. master_bahan (stok_saat_ini REMOVED per PRD - stock is transient from uploads)
   const seedBahan = [
